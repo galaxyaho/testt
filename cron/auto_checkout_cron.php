@@ -1,88 +1,99 @@
 <?php
 /**
  * Enhanced Auto Checkout Cron Job for L.P.S.T Hotel Booking System
- * This file should be executed by cron every 5 minutes
  * 
- * Cron command for Hostinger (as shown in your image):
- * 0 10 * * * /usr/bin/php /home/u261459251/domains/lpstnashik.in/public_html/cron/auto_checkout_cron.php
+ * HOSTINGER CRON JOB COMMANDS:
  * 
- * Or every 5 minutes to check if it's time:
- * */5 * * * * /usr/bin/php /home/u261459251/domains/lpstnashik.in/public_html/cron/auto_checkout_cron.php
+ * Option 1 (Recommended): Run every 5 minutes, checks if it's time
+ * */5 * * * * /usr/bin/php /home/u261459251/domains/soft.galaxytribes.in/public_html/cron/auto_checkout_cron.php
+ * 
+ * Option 2: Run exactly at 10:00 AM daily
+ * 0 10 * * * /usr/bin/php /home/u261459251/domains/soft.galaxytribes.in/public_html/cron/auto_checkout_cron.php
+ * 
+ * Option 3: Run every minute for testing (remove after testing)
+ * * * * * * /usr/bin/php /home/u261459251/domains/soft.galaxytribes.in/public_html/cron/auto_checkout_cron.php
  */
 
 // Set timezone first
 date_default_timezone_set('Asia/Kolkata');
 
-// Create logs directory if it doesn't exist
+// Create logs directory
 $logDir = dirname(__DIR__) . '/logs';
 if (!is_dir($logDir)) {
     mkdir($logDir, 0755, true);
 }
 
-// Function to log messages
-function logMessage($message) {
+// Enhanced logging function
+function logMessage($message, $level = 'INFO') {
     global $logDir;
     $timestamp = date('Y-m-d H:i:s');
-    $logMessage = "[$timestamp] $message\n";
+    $logMessage = "[$timestamp] [$level] $message\n";
+    
+    // Write to log file
     file_put_contents($logDir . '/auto_checkout.log', $logMessage, FILE_APPEND | LOCK_EX);
     
-    // Also output for manual runs
-    if (isset($_GET['manual_run']) || isset($_GET['test'])) {
+    // Also write to daily log
+    $dailyLogFile = $logDir . '/auto_checkout_' . date('Y-m-d') . '.log';
+    file_put_contents($dailyLogFile, $logMessage, FILE_APPEND | LOCK_EX);
+    
+    // Output for manual runs
+    if (isset($_GET['manual_run']) || isset($_GET['test']) || php_sapi_name() !== 'cli') {
         echo $logMessage;
     }
 }
 
-// Allow manual testing via browser
-$isManualRun = isset($_GET['manual_run']) || isset($_GET['test']);
+// Check if this is a manual run
+$isManualRun = isset($_GET['manual_run']) || isset($_GET['test']) || php_sapi_name() !== 'cli';
 
 if ($isManualRun) {
-    // Allow browser access for testing
     header('Content-Type: application/json');
-} else if (php_sapi_name() !== 'cli') {
-    // Prevent direct browser access in production
-    http_response_code(403);
-    die('Access denied. This script should only be run via cron job. Add ?manual_run=1 for testing.');
+    logMessage("MANUAL AUTO CHECKOUT TEST STARTED", 'TEST');
+} else {
+    logMessage("AUTOMATIC CRON AUTO CHECKOUT STARTED", 'CRON');
 }
 
-logMessage("Auto checkout cron started - " . ($isManualRun ? 'MANUAL RUN' : 'AUTOMATIC'));
-
-// Direct database connection for cron
-$host = 'localhost';
-$dbname = 'u261459251_patel';
-$username = 'u261459251_levagt';
-$password = 'GtPatelsamaj@0330';
-
+// Database connection with enhanced error handling
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-    $pdo->exec("SET time_zone = '+05:30'");
+    $host = 'localhost';
+    $dbname = 'u261459251_patel';
+    $username = 'u261459251_levagt';
+    $password = 'GtPatelsamaj@0330';
     
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+        PDO::ATTR_TIMEOUT => 30
+    ]);
+    
+    $pdo->exec("SET time_zone = '+05:30'");
     logMessage("Database connection successful");
+    
 } catch(PDOException $e) {
     $error = "Database connection failed: " . $e->getMessage();
-    logMessage($error);
+    logMessage($error, 'ERROR');
     
     if ($isManualRun) {
-        echo json_encode(['status' => 'error', 'message' => $error]);
+        echo json_encode(['status' => 'error', 'message' => $error, 'timestamp' => date('Y-m-d H:i:s')]);
     }
-    exit;
+    exit(1);
 }
 
-// Include the auto checkout class
-require_once dirname(__DIR__) . '/includes/auto_checkout.php';
-
+// Load and execute auto checkout
 try {
+    require_once dirname(__DIR__) . '/includes/auto_checkout.php';
+    
     $autoCheckout = new AutoCheckout($pdo);
     $result = $autoCheckout->executeDailyCheckout();
     
-    // Log the result
-    $logMessage = "Auto Checkout Result: " . json_encode($result);
-    logMessage($logMessage);
+    // Enhanced logging
+    $logLevel = $result['status'] === 'error' ? 'ERROR' : 'INFO';
+    $logMessage = "Auto Checkout Result: " . json_encode($result, JSON_PRETTY_PRINT);
+    logMessage($logMessage, $logLevel);
     
     // Output result
     if ($isManualRun) {
-        echo json_encode($result);
+        echo json_encode($result, JSON_PRETTY_PRINT);
     } else {
         echo "Auto checkout executed: " . $result['status'] . "\n";
         if (isset($result['checked_out'])) {
@@ -91,19 +102,30 @@ try {
         if (isset($result['failed'])) {
             echo "Failed: " . $result['failed'] . " bookings\n";
         }
+        if (isset($result['message'])) {
+            echo "Message: " . $result['message'] . "\n";
+        }
     }
     
+    // Exit with appropriate code
+    exit($result['status'] === 'error' ? 1 : 0);
+    
 } catch (Exception $e) {
-    $errorMessage = "Auto Checkout Error: " . $e->getMessage();
-    logMessage($errorMessage);
+    $errorMessage = "Auto Checkout Critical Error: " . $e->getMessage();
+    logMessage($errorMessage, 'CRITICAL');
     
     if ($isManualRun) {
         http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        echo json_encode([
+            'status' => 'critical_error', 
+            'message' => $e->getMessage(),
+            'timestamp' => date('Y-m-d H:i:s'),
+            'trace' => $e->getTraceAsString()
+        ]);
     } else {
-        echo "Error: " . $e->getMessage() . "\n";
+        echo "Critical Error: " . $e->getMessage() . "\n";
     }
+    
+    exit(1);
 }
-
-logMessage("Auto checkout cron completed");
 ?>
