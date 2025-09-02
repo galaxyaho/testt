@@ -1,0 +1,17 @@
+{
+    "name": "lpst/bookings-system",
+    "description": "L.P.S.T Hotel Bookings Management System",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "phpmailer/phpmailer": "^6.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "LPST\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}
