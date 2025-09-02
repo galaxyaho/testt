@@ -177,6 +177,9 @@ $flash = get_flash_message();
                     <input type="time" id="auto_checkout_time" name="auto_checkout_time" class="form-control" 
                            value="<?= htmlspecialchars($autoCheckoutTime) ?>" required>
                     <small style="color: var(--dark-color);">Time when auto checkout will run daily (24-hour format)</small>
+                    <div style="margin-top: 0.5rem; padding: 0.5rem; background: rgba(255, 193, 7, 0.1); border-radius: 4px;">
+                        <strong>For Testing:</strong> Set time to <?= date('H:i', strtotime('+2 minutes')) ?> (2 minutes from now) to test immediately
+                    </div>
                 </div>
                 
                 <div style="display: flex; gap: 1rem;">
@@ -185,6 +188,9 @@ $flash = get_flash_message();
                             onclick="return confirm('This will test the auto checkout system now. Continue?')">
                         🧪 Test Auto Checkout
                     </button>
+                    <a href="manual_checkout_test.php" class="btn btn-success">
+                        🚀 Manual Test Page
+                    </a>
                 </div>
             </form>
         </div>
